@@ -1,0 +1,38 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 3.0"
+    }
+  }
+}
+provider "azurerm" {
+  features {
+    subscription {
+      prevent_cancellation_on_destroy = true
+    }
+  }
+}
+provider "azuread" {}
+
+
+# provider "azurerm" {
+#   features {}
+# }
+
+# provider "azurerm" {
+#   alias           = "dev"
+#   subscription_id = var.dev_subscription_id
+#   features {}
+# }
+
+# provider "azurerm" {
+#   alias           = "prod"
+#   subscription_id = var.prod_subscription_id
+#   features {}
+# }
+

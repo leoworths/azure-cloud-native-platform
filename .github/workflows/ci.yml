@@ -1,0 +1,581 @@
+name: CI - Build and Security Scan
+
+on:
+  push:
+    branches: [main]
+
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ACR_NAME: 3tieracr
+  ACR_LOGIN_SERVER: 3tieracr.azurecr.io
+  FRONTEND_IMAGE: 3tier-azure/frontend
+  BACKEND_IMAGE: 3tier-azure/backend
+  IMAGE_TAG: ${{ github.sha }}
+
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
+
+# =========================================================
+# VALIDATION
+# =========================================================
+
+jobs:
+  validate:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Frontend
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Install Backend
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Lint Frontend
+        run: |
+          cd frontend
+          npm run lint --if-present
+
+      - name: Syntax Check
+        run: |
+          find ./frontend -name "*.js" -exec node --check {} +
+          python -m py_compile $(git ls-files '*.py')
+
+# =========================================================
+# TEST
+# =========================================================
+
+  test:
+    runs-on: self-hosted
+    needs: validate
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backend Tests
+        run: |
+          cd backend
+          pip install pytest pytest-cov pytest-html 
+          pytest --cov=. --junitxml=pytest-report.xml --cov-report=html
+
+      - name: Frontend Tests
+        run: |
+          cd frontend
+          npm ci
+          npm test -- --coverage --watchAll=false
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.sha }}
+          path: |
+            backend/pytest-report.xml
+            backend/htmlcov/
+            frontend/coverage/lcov-report
+
+# =========================================================
+# SECURITY (SAST + CHECKOV + SECRETS )
+# =========================================================
+
+  security-static:
+    runs-on: self-hosted
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy FS Scan
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs.sarif
+
+      - name: Run Checkov Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,kubernetes,dockerfile,github_actions
+          output_format: sarif
+          output_file_path: checkov.sarif
+          soft_fail: false
+
+      - name: Upload Checkov SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: checkov.sarif
+# =========================================================
+# BUILD APPLICATION
+# =========================================================
+
+  build:
+    runs-on: self-hosted
+    needs: security-static
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # - name: Setup Node.js
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: 24
+      #     cache: npm
+      #     cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+# =========================================================
+# CONTAINER BUILD (OPTIMIZED WITH CACHE)
+# =========================================================
+
+  container-build:
+    runs-on: self-hosted
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v4
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR Login
+        run: az acr login --name $ACR_NAME
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # FRONTEND
+      - name: Build Frontend Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          push: true
+          #load: true
+          tags: ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # BACKEND
+      - name: Build Backend Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          push: true
+          #load: true
+          tags: ${{ env.ACR_LOGIN_SERVER }}/${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+# =========================================================
+# CONTAINER SECURITY + GATE
+# =========================================================
+
+  container-security:
+    runs-on: self-hosted
+    needs: container-build
+
+    steps:
+      - name: Scan Frontend Image
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}
+          format: sarif
+          output: frontend.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Scan Backend Image
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
+          format: sarif
+          output: backend.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Security Gate (FAIL ON CRITICAL)
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.BACKEND_IMAGE }}:${{ env.IMAGE_TAG }}
+          severity: CRITICAL,HIGH
+          exit-code: 1
+
+# =========================================================
+# SBOM + SIGNING (SUPPLY CHAIN SECURITY)
+# =========================================================
+
+  supply-chain:
+    runs-on: self-hosted
+    needs: container-security
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh
+
+      - name: Generate SBOM Backend
+        run: |
+          syft $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG \
+            -o cyclonedx-json > sbom-backend.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign Backend Image
+        run: |
+          cosign sign --yes \
+          $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG
+
+# =========================================================
+# PUSH ONLY AFTER SECURITY PASS
+# =========================================================
+
+  # push-images:
+  #   runs-on: arc-runner-set
+  #   needs: supply-chain
+
+  #   steps:
+  #     - name: Azure Login
+  #       uses: azure/login@v4
+  #       with:
+  #         client-id: ${{ secrets.AZURE_CLIENT_ID }}
+  #         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+  #         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  #     - name: Push Images
+  #       run: |
+  #         docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG
+  #         docker push $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# name: CI - Build and Security Scan
+
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main] 
+# env:
+#   ACR_NAME: 3tieracr
+#   ACR_LOGIN_SERVER: 3tieracr.azurecr.io
+#   FRONTEND_IMAGE: 3tier-azure/frontend
+#   BACKEND_IMAGE: 3tier-azure/backend
+#   TAG: ${{ github.sha }} 
+#   #AZURE_CORE_OUTPUT: none   # 🔐 Prevents leaking secrets in logs
+
+# jobs:
+#   validate:
+#     name: Validate Source Code
+#     runs-on: ubuntu-latest   # ⚠️ Change to self-hosted if ACR is private
+
+#     permissions:
+#       id-token: write
+#       contents: read   # Needed for GitOps push
+#       security-events: write
+
+#     steps:
+#       # =========================
+#       # CHECKOUT
+#       # =========================
+#       - name: Checkout Repository
+#         uses: actions/checkout@v6
+
+#       # =========================
+#       # SETUP RUNTIMES
+#       # =========================
+#       - name: Setup Node
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 24
+#           cache: 'npm'
+#           cache-dependency-path: 'frontend/package-lock.json'
+
+          
+#       - name: Install Frontend Dependencies and Build 
+#         run: |
+#           working-directory: frontend
+#           npm ci 
+#           npm run build 
+
+#       - name: Setup Python
+#         uses: actions/setup-python@v6
+#         with:
+#           python-version: '3.13'
+#           cache: 'pip'
+#           cache-dependency-path: 'backend/requirements.txt'
+
+#       - name: Install Backend Dependencies
+#         run: |
+#           working-directory: backend
+#           python -m pip install --upgrade pip
+#           pip install -r requirements.txt
+
+
+#       # =========================
+#       # Validation Checks (Syntax, Linting, etc.)
+#       # =========================
+#       - name: Syntax Validation
+#         run: |
+#           find ./frontend -name "*.js" -exec node --check {} +
+#           python -m py_compile $(git ls-files '*.py')
+
+#       # =========================
+#       # GITLEAKS (SECRETS SCAN)
+#       # =========================
+#       - name: Install Gitleaks
+#         run: |
+#           curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64.tar.gz | tar -xz
+#           sudo mv gitleaks /usr/local/bin/
+
+#       - name: Run Gitleaks
+#         run: |
+#           gitleaks detect --source . --report-path gitleaks.json || echo "Leaks detected"
+
+#       # =========================
+#       # TRIVY FS SCAN (CODE + IaC)
+#       # =========================
+#       - name: Trivy FS Scan
+#         uses: aquasecurity/trivy-action@0.33.1
+#         with:
+#           scan-type: fs
+#           scan-ref: .
+#           format: sarif
+#           output: trivy-fs.sarif
+#           severity: CRITICAL,HIGH
+#           ignore-unfixed: true
+
+#       # =========================
+#       # AZURE LOGIN (OIDC)
+#       # =========================
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       # =========================
+#       # ACR LOGIN (NO USER/PASS)
+#       # =========================
+#       - name: ACR Login
+#         run: az acr login --name $ACR_NAME
+
+#       # =========================
+#       # DOCKER BUILDX
+#       # =========================
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       # =========================
+#       # BUILD IMAGES
+#       # =========================
+#       - name: Build Images
+#         run: |
+#           docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$TAG frontend
+#           docker build -t $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$TAG backend
+
+#       # =========================
+#       # SBOM GENERATION
+#       # =========================
+#       - name: Install Syft
+#         run: |
+#           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh
+
+#       - name: Generate SBOM (Frontend)
+#         run: |
+#           syft $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$TAG -o cyclonedx-json > sbom-frontend.json
+
+#       - name: Generate SBOM (Backend)
+#         run: |
+#           syft $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$TAG -o cyclonedx-json > sbom-backend.json
+
+#       # =========================
+#       # PUSH IMAGES (BEFORE SCAN TO GET IMAGE DIGEST)
+#       # =========================
+#       - name: Push Images
+#         run: |
+#           docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$TAG
+#           docker push $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$TAG
+#       #=========================
+#       # INSTALL COSIGN (OPTIONAL BUT RECOMMENDED)
+#       # =========================
+#       - name: Install Cosign
+#         run: |
+#           curl -sSL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o cosign
+#           chmod +x cosign
+#           sudo mv cosign /usr/local/bin/
+
+#       - name: Sign Images
+#         run: |
+#           cosign sign --yes $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$TAG
+#           cosign sign --yes $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$TAG
+#       # =========================
+#       # ATTACH SBOM TO IMAGES
+#       # =========================
+#       - name: Attach SBOM Backend
+#         run: |
+#           cosign attach sbom \
+#             --sbom sbom-backend.json \
+#             $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$TAG
+
+#       - name: Attach SBOM Frontend
+#         run: |
+#           cosign attach sbom \
+#             --sbom sbom-frontend.json \
+#             $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$TAG
+
+#       # =========================
+#       # TRIVY IMAGE SCANS
+#       # =========================
+#       - name: Trivy Scan Frontend
+#         uses: aquasecurity/trivy-action@0.33.1
+#         with:
+#           image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ env.TAG }}
+#           format: sarif
+#           output: trivy-frontend.sarif
+#           severity: CRITICAL,HIGH
+#           ignore-unfixed: true
+#           skip-setup-trivy: true
+
+#       - name: Trivy Scan Backend
+#         uses: aquasecurity/trivy-action@0.33.1
+#         with:
+#           image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.BACKEND_IMAGE }}:${{ env.TAG }}
+#           format: sarif
+#           output: trivy-backend.sarif
+#           severity: CRITICAL,HIGH
+#           ignore-unfixed: true
+#           skip-setup-trivy: true
+
+#       # =========================
+#       # SECURITY GATE (FAIL PIPELINE)
+#       # =========================
+#       - name: Enforce Security Gate
+#         uses: aquasecurity/trivy-action@0.33.1
+#         with:
+#           image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.BACKEND_IMAGE }}:${{ env.TAG }}
+#           severity: CRITICAL,HIGH
+#           exit-code: 1
+#           ignore-unfixed: true
+#           skip-setup-trivy: true
+
+#       # =========================
+#       # UPLOAD SECURITY RESULTS
+#       # =========================
+#       - name: Upload FS Scan
+#         uses: github/codeql-action/upload-sarif@v3
+#         if: always()
+#         with:
+#           sarif_file: trivy-fs.sarif
+
+#       - name: Upload Frontend Scan
+#         uses: github/codeql-action/upload-sarif@v3
+#         if: always()
+#         with:
+#           sarif_file: trivy-frontend.sarif
+
+#       - name: Upload Backend Scan
+#         uses: github/codeql-action/upload-sarif@v3
+#         if: always()
+#         with:
+#           sarif_file: trivy-backend.sarif
+
+#       # =========================
+#       # SAVE ARTIFACTS
+#       # =========================
+#       - name: Save Security Artifacts
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: security-reports
+#           path: |
+#             gitleaks.json
+#             sbom-frontend.json
+#             sbom-backend.json
+
+#       # # =========================
+#       # # GITOPS UPDATE
+#       # # =========================
+#       # - name: Update Kubernetes Manifests
+#       #   run: |
+#       #     sed -i "s|image: .*backend.*|image: $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$TAG|g" k8s/backend.yaml
+#       #     sed -i "s|image: .*frontend.*|image: $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$TAG|g" k8s/frontend.yaml
+
+#       #     git config --global user.email "ci@devops.com"
+#       #     git config --global user.name "CI Bot"
+
+#       #     git commit -am "Update image tag $TAG" || echo "No changes"
+#       #     git push
+
+
+
+
+
+
+
+

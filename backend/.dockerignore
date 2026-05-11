@@ -1,0 +1,18 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Local environment
+env/
+*.sqlite3
+
+# Logs
+*.log
+
+# Git and IDE files
+.git
+.vscode/
+.idea/
+
+# Optional: tests or other dev-only files
+tests/

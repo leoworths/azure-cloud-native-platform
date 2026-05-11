@@ -1,0 +1,20 @@
+# repoServer:
+#   podLabels:
+#     azure.workload.identity/use: "true"
+
+#   serviceAccount:
+#     create: false
+#     name: argocd-server
+
+# server:
+#   service:
+#     type: LoadBalancer
+#     annotations:
+#       service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+
+# configs:
+#   rbac:
+#     policy.default: role:readonly
+
+#   params:
+#     server.insecure: true

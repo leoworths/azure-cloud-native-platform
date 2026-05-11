@@ -1,0 +1,619 @@
+# trigger:
+#   branches:
+#     include:
+#       - main
+
+# variables:
+#   acrName: "3tieracr"
+#   acrLoginServer: "3tieracr.azurecr.io"
+#   imageRepositoryFrontend: "3tier-azure/frontend"
+#   imageRepositoryBackend: "3tier-azure/backend"
+#   tag: "$(Build.SourceVersion)"
+#   acrServiceConnection: "acr-svc-conn"
+
+# # ==========================================
+# # 1. CI - VALIDATE & SECURITY
+# # ==========================================
+# stages:
+# - stage: Validate
+#   displayName: "Validate & Security"
+#   jobs:
+#     - job: validate
+#       pool:
+#         vmImage: ubuntu-latest # ⚠️ Change to devops-pool if ACR is private
+
+#       steps:
+#         - checkout: self
+
+#         - task: NodeTool@0
+#           inputs:
+#             versionSpec: "22"
+
+#         - task: UsePythonVersion@0
+#           inputs:
+#             versionSpec: "3.12"
+
+#         - script: |
+#             echo "Frontend syntax check"
+#             find ./frontend -name "*.js" -exec node --check {} +
+
+#             echo "Backend syntax check"
+#             python -m py_compile $(git ls-files '*.py')
+#           displayName: "Syntax Validation"
+
+#         - script: |
+#             gitleaks detect --source . --report-path gitleaks.json || true
+#           displayName: "Secrets Scan"
+
+
+# # ==========================================
+# # 2. BUILD APPLICATION
+# # ==========================================
+# - stage: Build
+#   dependsOn: Validate
+#   jobs:
+#     - job: build
+#       pool:
+#         vmImage: ubuntu-latest
+
+#       steps:
+#         - checkout: self
+
+#         - script: |
+#             cd frontend && npm ci && npm run build
+#             cd ../backend && pip install -r requirements.txt
+#           displayName: "Build Apps"
+
+
+# # ==========================================
+# # 3. BUILD & PUSH CONTAINERS (WIF)
+# # ==========================================
+# - stage: Container
+#   dependsOn: Build
+#   jobs:
+#     - job: docker
+#       pool:
+#         vmImage: ubuntu-latest
+
+#       steps:
+#         - checkout: self
+
+#         # 🔐 Login via Workload Identity Federation
+#         - task: AzureCLI@2
+#           displayName: "Login to ACR (WIF)"
+#           inputs:
+#             azureSubscription: $(acrServiceConnection)
+#             scriptType: bash
+#             scriptLocation: inlineScript
+#             inlineScript: |
+#               az acr login --name $(acrName)
+
+#         # 🐳 Build Images
+#         - script: |
+#             docker build -t $(acrLoginServer)/$(imageRepositoryFrontend):$(tag) frontend
+#             docker build -t $(acrLoginServer)/$(imageRepositoryBackend):$(tag) backend
+#           displayName: "Build Images"
+
+#         # 📦 Push Images
+#         - script: |
+#             docker push $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)
+#             docker push $(acrLoginServer)/$(imageRepositoryBackend):$(tag)
+#           displayName: "Push Images"
+
+#         # 📦 SBOM
+#         - script: |
+#             curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh
+#             syft $(acrLoginServer)/$(imageRepositoryBackend):$(tag) -o cyclonedx-json > sbom.json
+#           displayName: "Generate SBOM"
+
+#         # 🔍 Scan
+#         - script: |
+#             trivy image --severity HIGH,CRITICAL $(acrLoginServer)/$(imageRepositoryBackend):$(tag) || true
+#           displayName: "Security Scan"
+
+
+# # ==========================================
+# # 4. SECURITY GATE (FAIL PIPELINE)
+# # ==========================================
+# - stage: SecurityGate
+#   dependsOn: Container
+#   jobs:
+#     - job: gate
+#       pool:
+#         vmImage: ubuntu-latest
+
+#       steps:
+#         - script: |
+#             trivy image \
+#               --severity CRITICAL,HIGH \
+#               --exit-code 1 \
+#               $(acrLoginServer)/$(imageRepositoryBackend):$(tag)
+#           displayName: "Enforce Security"
+
+
+# # ==========================================
+# # 5. GITOPS UPDATE (ARGOCD HANDOFF)
+# # ==========================================
+# - stage: GitOps
+#   dependsOn: SecurityGate
+#   jobs:
+#     - job: update
+#       pool:
+#         vmImage: ubuntu-latest
+
+#       steps:
+#         - checkout: self
+
+#         - script: |
+#             echo "Updating Kubernetes manifests..."
+
+#             sed -i "s|image: .*frontend.*|image: $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)|" k8s/frontend.yaml
+#             sed -i "s|image: .*backend.*|image: $(acrLoginServer)/$(imageRepositoryBackend):$(tag)|" k8s/backend.yaml
+
+#             git config user.email "ci@platform.dev"
+#             git config user.name "platform-ci"
+
+#             git add k8s/
+#             git commit -m "GitOps update: $(tag)" || echo "No changes"
+#             git push
+#           displayName: "Update GitOps"
+
+
+
+
+
+
+
+# trigger:
+#   branches:
+#     include:
+#       - main
+
+# variables:
+#   AgentPool: "self-hosted"
+#   nodeVersion: "22"
+#   pythonVersion: "3.12"
+#   acrName: "3tieracr"
+#   acrLoginServer: "3tieracr.azurecr.io"
+#   imageRepositoryFrontend: "3tier-azure/frontend"
+#   imageRepositoryBackend: "3tier-azure/backend"
+#   tag: "$(Build.BuildId)"
+
+# stages:
+
+# # =========================
+# # 1. VALIDATE
+# # =========================
+# - stage: Validate
+#   jobs:
+#     - job: Validate
+#       pool: $(AgentPool)
+#       steps:
+#         - checkout: self
+
+#         - task: NodeTool@0
+#           inputs:
+#             versionSpec: $(nodeVersion)
+
+#         - task: UsePythonVersion@0
+#           inputs:
+#             versionSpec: $(pythonVersion)
+
+#         - script: |
+#             echo "Checking frontend JS"
+#             find ./frontend -name "*.js" -exec node --check {} +
+
+#             echo "Checking backend Python"
+#             python -m py_compile $(git ls-files '*.py')
+#           displayName: "Syntax Check"
+
+#         - script: |
+#             gitleaks detect --source . --report-path gitleaks.json || true
+#           displayName: "Secrets Scan"
+
+# # =========================
+# # 2. BUILD
+# # =========================
+# - stage: Build
+#   dependsOn: Validate
+#   jobs:
+
+#     - job: Frontend
+#       pool: $(AgentPool)
+#       steps:
+#         - checkout: self
+#         - task: NodeTool@0
+#           inputs:
+#             versionSpec: $(nodeVersion)
+#         - script: |
+#             cd frontend
+#             npm ci
+#             npm run build
+#           displayName: "Build Frontend"
+
+#     - job: Backend
+#       pool: $(AgentPool)
+#       steps:
+#         - checkout: self
+#         - task: UsePythonVersion@0
+#           inputs:
+#             versionSpec: $(pythonVersion)
+#         - script: |
+#             cd backend
+#             pip install -r requirements.txt
+#           displayName: "Install Backend Dependencies"
+
+# # =========================
+# # 3. DOCKER BUILD + SCAN
+# # =========================
+# - stage: Docker
+#   dependsOn: Build
+#   jobs:
+#     - job: Docker
+#       pool: $(AgentPool)
+#       steps:
+#         - checkout: self
+
+#         # 🔐 Managed Identity Login
+#         - script: |
+#             az login --identity
+#             az acr login --name $(acrName)
+#           displayName: "Login to ACR"
+
+#         # 🐳 Build Images
+#         - script: |
+#             docker build -t $(acrLoginServer)/$(imageRepositoryFrontend):$(tag) frontend
+#             docker build -t $(acrLoginServer)/$(imageRepositoryBackend):$(tag) backend
+#           displayName: "Build Images"
+
+#         # 📦 SBOM
+#         - script: |
+#             curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh
+#             syft $(acrLoginServer)/$(imageRepositoryBackend):$(tag) -o cyclonedx-json > sbom.json
+#           displayName: "Generate SBOM"
+
+#         # 🔍 Scan
+#         - script: |
+#             trivy image $(acrLoginServer)/$(imageRepositoryBackend):$(tag) || true
+#           displayName: "Trivy Scan"
+
+# # =========================
+# # 4. PUSH
+# # =========================
+# - stage: Push
+#   dependsOn: Docker
+#   jobs:
+#     - job: Push
+#       pool: $(AgentPool)
+#       steps:
+#         - script: |
+#             docker push $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)
+#             docker push $(acrLoginServer)/$(imageRepositoryBackend):$(tag)
+
+# # =========================
+# # 5. UPDATE (GITOPS)
+# # =========================
+# - stage: Update
+#   dependsOn: Push
+#   jobs:
+#     - job: Update
+#       pool: $(AgentPool)
+#       steps:
+#         - checkout: self
+#         - script: |
+#             sed -i "s|image: .*|image: $(acrLoginServer)/$(imageRepositoryBackend):$(tag)|g" k8s/backend.yaml
+#             sed -i "s|image: .*|image: $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)|g" k8s/frontend.yaml
+
+#             git config --global user.email "ci@devops.com"
+#             git config --global user.name "CI"
+#             git add .
+#             git commit -m "Update $(tag)" || true
+#             git push 
+
+
+
+
+trigger:
+  branches:
+    include:
+      - dev
+      - main
+
+variables:
+  nodeVersion: "22"
+  pythonVersion: "3.12"
+
+  acrName: "3tieracr"
+  acrLoginServer: "3tieracr.azurecr.io"
+  imageRepositoryFrontend: "3tier-azure/frontend"
+  imageRepositoryBackend: "3tier-azure/backend"
+  acrServiceConnection: "acr-svc-conn"
+  tag: "$(Build.SourceVersion)"
+
+#################################################
+# STAGE 1 - VALIDATE + SECURITY (FAST)
+#################################################
+stages:
+- stage: Validate
+  jobs:
+    - job: validate
+      pool:
+        vmImage: ubuntu-latest
+
+      steps:
+        - checkout: self
+
+        # 🔧 Install tools (prevents pipeline failure)
+        - script: |
+            echo "Installing tools..."
+
+            # Gitleaks
+            curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh | bash
+
+            # Trivy
+            sudo apt-get update
+            sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+            wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+            echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+            sudo apt-get update
+            sudo apt-get install -y trivy
+
+            # Syft
+            curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+          displayName: "Install Security Tools"
+
+        - task: NodeTool@0
+          inputs:
+            versionSpec: $(nodeVersion)
+
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: $(pythonVersion)
+
+        - script: |
+            find ./frontend -name "*.js" -exec node --check {} +
+            python -m py_compile $(git ls-files '*.py')
+          displayName: "Syntax Check"
+
+        - script: |
+            gitleaks detect --source . --report-path gitleaks.json || true
+          displayName: "Secrets Scan"
+
+#################################################
+# STAGE 2 - BUILD
+#################################################
+- stage: Build
+  dependsOn: Validate
+  jobs:
+    - job: build
+      pool:
+        vmImage: ubuntu-latest
+
+      steps:
+        - checkout: self
+
+        - script: |
+            cd frontend && npm ci && npm run build
+            cd ../backend && pip install -r requirements.txt
+          displayName: "Build Applications"
+
+#################################################
+# STAGE 3 - DEV (FAST PATH)
+#################################################
+- stage: Dev
+  dependsOn: Build
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/dev')
+
+  jobs:
+    - job: docker_dev
+      pool:
+        vmImage: ubuntu-latest
+
+      steps:
+        - checkout: self
+
+        - task: AzureCLI@2
+          inputs:
+            azureSubscription: $(acrServiceConnection)
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              az acr login --name $(acrName)
+
+        - script: |
+            docker build -t $(acrLoginServer)/$(imageRepositoryFrontend):$(tag) frontend
+            docker build -t $(acrLoginServer)/$(imageRepositoryBackend):$(tag) backend
+
+            docker push $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)
+            docker push $(acrLoginServer)/$(imageRepositoryBackend):$(tag)
+          displayName: "Build & Push (DEV)"
+
+#################################################
+# STAGE 4 - PROD (ZERO TRUST)
+#################################################
+- stage: Prod
+  dependsOn: Build
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+
+  jobs:
+    - job: docker_prod
+      pool:
+        name: devops-pool   # your Terraform pool
+
+      steps:
+        - checkout: self
+
+        # 🔐 No secrets, no public access
+        - script: |
+            az login --identity
+            az acr login --name $(acrName)
+          displayName: "Managed Identity Login"
+
+        - script: |
+            docker build -t $(acrLoginServer)/$(imageRepositoryFrontend):$(tag) frontend
+            docker build -t $(acrLoginServer)/$(imageRepositoryBackend):$(tag) backend
+
+            docker push $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)
+            docker push $(acrLoginServer)/$(imageRepositoryBackend):$(tag)
+          displayName: "Build & Push (PROD)"
+
+#################################################
+# STAGE 5 - SECURITY GATE (PROD ONLY)
+#################################################
+- stage: Security
+  dependsOn: Prod
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+
+  jobs:
+    - job: security
+      pool:
+        vmImage: ubuntu-latest
+
+      steps:
+        - script: |
+            trivy image \
+              --severity CRITICAL,HIGH \
+              --exit-code 1 \
+              $(acrLoginServer)/$(imageRepositoryBackend):$(tag)
+          displayName: "Security Gate"
+
+#################################################
+# STAGE 6 - GITOPS (DEPLOYMENT HANDOFF)
+#################################################
+- stage: GitOps
+  dependsOn:
+    - Dev
+    - Security
+
+  jobs:
+    - job: update
+      pool:
+        vmImage: ubuntu-latest
+
+      steps:
+        - checkout: self
+
+        - script: |
+            sed -i "s|image: .*frontend.*|image: $(acrLoginServer)/$(imageRepositoryFrontend):$(tag)|g" k8s/frontend.yaml
+            sed -i "s|image: .*backend.*|image: $(acrLoginServer)/$(imageRepositoryBackend):$(tag)|g" k8s/backend.yaml
+
+            git config user.email "ci@platform.dev"
+            git config user.name "platform-ci"
+
+            git add k8s/
+            git commit -m "GitOps update: $(tag)" || echo "No changes"
+            git push
+          displayName: "Update GitOps"
+
+
+
+
+
+
+# name: Infra Provisioning
+
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - "modules/**"
+
+
+# permissions:
+#   id-token: write
+#   contents: read
+
+# jobs:
+
+#   phase1:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - name: Azure Login (OIDC)
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - run: terraform -chdir=infra/envs/dev/phase1 init
+#       - run: terraform -chdir=infra/envs/dev/phase1 apply -auto-approve
+
+#   phase2:
+#     runs-on: ubuntu-latest
+#     needs: phase1
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - run: terraform -chdir=infra/envs/dev/phase2 init
+#       - run: terraform -chdir=infra/envs/dev/phase2 apply -auto-approve
+
+#   phase3:
+#     runs-on: ubuntu-latest
+#     needs: phase2
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - run: terraform -chdir=infra/envs/dev/phase3 init
+#       - run: terraform -chdir=infra/envs/dev/phase3 apply -auto-approve
+
+#   phase4:
+#     runs-on: ubuntu-latest
+#     needs: phase3
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - run: terraform -chdir=infra/envs/dev/phase4 init
+#       - run: terraform -chdir=infra/envs/dev/phase4 apply -auto-approve
+
+#   phase5:
+#     runs-on: ubuntu-latest
+#     needs: phase4
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - run: terraform -chdir=infra/envs/dev/phase5 init
+#       - run: terraform -chdir=infra/envs/dev/phase5 apply -auto-approve
+
+#   phase6:
+#     runs-on: ubuntu-latest
+#     needs: phase5
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       - run: terraform -chdir=infra/envs/dev/phase6 init
+#       - run: terraform -chdir=infra/envs/dev/phase6 apply -auto-approve
+
+
