@@ -1,54 +1,69 @@
-# #!/bin/bash
-# set -euxo pipefail
+#!/bin/bash
+set -euxo pipefail
 
-# echo "========== STARTING VM BOOTSTRAP =========="
-
-# # VARIABLES (EDIT THESE)
-# AZP_URL="https://dev.azure.com/cetera-org/zero-trust"     #"https://dev.azure.com/<YOUR-ORG>"
-# #AZP_TOKEN="<YOUR-TOKEN>"
-# AZP_POOL="self-hosted"
-# AZP_AGENT_NAME="$(hostname)-$(date +%s)"
+echo "========== STARTING VM BOOTSTRAP =========="
 
 
 
-# # System Update
-# apt-get update -y
-# apt-get upgrade -y
+# System Update
+apt-get update -y
+apt-get upgrade -y
 
-# # Base Packages
-# apt-get install -y \
-#   curl wget git unzip jq \
-#   apt-transport-https ca-certificates gnupg lsb-release software-properties-common
+# Base Packages
+apt-get install -y \
+  curl wget git unzip jq \
+  apt-transport-https ca-certificates gnupg lsb-release software-properties-common
 
-# # Azure CLI
-# curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+# Azure CLI
+curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
-# # kubectl
-# curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-# install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-# rm kubectl
+# kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+rm kubectl
 
-# # Helm
-# curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
+# Helm
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-# # Docker
-# install -m 0755 -d /etc/apt/keyrings
-# curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-# chmod a+r /etc/apt/keyrings/docker.gpg
+# Docker
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-# echo \
-#   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-#   https://download.docker.com/linux/ubuntu \
-#   $(lsb_release -cs) stable" \
-#   > /etc/apt/sources.list.d/docker.list
-
-# apt-get update -y
-# apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# systemctl enable docker
-# systemctl start docker
-# usermod -aG docker azureuser
+systemctl enable docker
+systemctl start docker
+usermod -aG docker azureuser
 # newgrp docker 
+
+# Terraform
+wget -O- https://apt.releases.hashicorp.com/gpg \
+  | gpg --dearmor \
+  | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+echo \
+  "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+  https://apt.releases.hashicorp.com \
+  $(lsb_release -cs) main" \
+  > /etc/apt/sources.list.d/hashicorp.list
+apt-get update -y
+apt-get install -y terraform
+
+
+# kubelogin
+curl -LO https://github.com/Azure/kubelogin/releases/latest/download/kubelogin-linux-amd64.zip
+apt-get install -y unzip
+unzip kubelogin-linux-amd64.zip -d kubelogin
+install -o root -g root -m 0755 \
+  kubelogin/bin/linux_amd64/kubelogin \
+  /usr/local/bin/kubelogin
+rm -rf kubelogin kubelogin-linux-amd64.zip
+
 
 # # Security Tools
 # # Trivy
@@ -71,6 +86,14 @@
 
 # # Syft
 # curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+
+
+# VARIABLES (EDIT THESE)
+# AZP_URL="https://dev.azure.com/cetera-org/zero-trust"     #"https://dev.azure.com/<YOUR-ORG>"
+# #AZP_TOKEN="<YOUR-TOKEN>"
+# AZP_POOL="self-hosted"
+# AZP_AGENT_NAME="$(hostname)-$(date +%s)"
 
 
 # # Prepare agent directory
@@ -188,8 +211,8 @@
 
 # # ==============================
 # # DOCKER (for builds)
-# # ==============================
-# # Add Docker's official GPG key:
+# ==============================
+# Add Docker's official GPG key:
 # sudo apt update
 # sudo apt install ca-certificates curl
 # sudo install -m 0755 -d /etc/apt/keyrings
@@ -292,30 +315,216 @@
 
 
 
-#!/bin/bash
-set -e
+# #!/bin/bash
 
-echo "STARTING SIMPLE BOOTSTRAP"
+# # update
+# sudo apt-get update -y
 
-# update
-sudo apt-get update -y
+# # basic tools
+# sudo apt-get install -y curl git wget unzip jq \
+#   apt-transport-https ca-certificates gnupg lsb-release software-properties-common
 
-# basic tools
-sudo apt-get install -y curl git
+# # install Azure CLI
+# curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
-# install Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+# # kubectl
+# curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+# sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+# rm kubectl
 
-# install Docker
-sudo apt-get install -y docker.io
-sudo systemctl enable docker
-sudo systemctl start docker
-sudo usermod -aG docker azureuser
-sudo chmod 666 /var/run/docker.sock
-newgrp docker
+# # Helm
+# curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | sudo bash
 
-# install kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-install -m 0755 kubectl /usr/local/bin/kubectl
+# # install Docker
+# sudo apt-get install -y docker.io
+# sudo systemctl enable docker
+# sudo systemctl start docker
+# sudo usermod -aG docker azureuser
+# sudo chmod 666 /var/run/docker.sock
+# newgrp docker
 
-echo "BOOTSTRAP COMPLETE"
+# # Install Trerraform
+# wget -O- https://apt.releases.hashicorp.com/gpg | \
+# gpg --dearmor | \
+# sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+# echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+# https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+# sudo tee /etc/apt/sources.list.d/hashicorp.list
+# sudo apt update
+# sudo apt install terraform -y
+# terraform version
+
+
+# wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+# echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+# sudo apt update && sudo apt install terraform -y
+
+
+
+
+
+
+
+# #!/bin/bash
+# set -euxo pipefail
+
+# echo "========== STARTING VM BOOTSTRAP =========="
+
+# # =========================================================
+# # VARIABLES
+# # =========================================================
+
+# GITHUB_ORG="leoworths"
+# RUNNER_NAME="$(hostname)-$(date +%s)"
+# RUNNER_DIR="/home/azureuser/actions-runner"
+
+# # Inject securely from Terraform
+# GITHUB_RUNNER_TOKEN="${github_runner_token}"
+
+# # =========================================================
+# # SYSTEM UPDATE
+# # =========================================================
+
+# apt-get update -y
+# apt-get upgrade -y
+
+# # =========================================================
+# # BASE PACKAGES
+# # =========================================================
+
+# apt-get install -y \
+#   curl \
+#   wget \
+#   git \
+#   unzip \
+#   jq \
+#   apt-transport-https \
+#   ca-certificates \
+#   gnupg \
+#   lsb-release \
+#   software-properties-common
+
+# # =========================================================
+# # AZURE CLI
+# # =========================================================
+
+# curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+# # =========================================================
+# # KUBECTL
+# # =========================================================
+
+# curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+
+# install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+# rm kubectl
+
+# # =========================================================
+# # HELM
+# # =========================================================
+
+# curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# # =========================================================
+# # DOCKER
+# # =========================================================
+
+# install -m 0755 -d /etc/apt/keyrings
+
+# curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+#   | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# chmod a+r /etc/apt/keyrings/docker.gpg
+
+# echo \
+#   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+#   https://download.docker.com/linux/ubuntu \
+#   $(lsb_release -cs) stable" \
+#   > /etc/apt/sources.list.d/docker.list
+
+# apt-get update -y
+
+# apt-get install -y \
+#   docker-ce \
+#   docker-ce-cli \
+#   containerd.io \
+#   docker-buildx-plugin \
+#   docker-compose-plugin
+
+# systemctl enable docker
+# systemctl start docker
+
+# usermod -aG docker azureuser
+
+# # =========================================================
+# # TERRAFORM
+# # =========================================================
+
+# wget -O- https://apt.releases.hashicorp.com/gpg \
+#   | gpg --dearmor \
+#   | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+
+# echo \
+#   "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+#   https://apt.releases.hashicorp.com \
+#   $(lsb_release -cs) main" \
+#   > /etc/apt/sources.list.d/hashicorp.list
+
+# apt-get update -y
+
+# apt-get install -y terraform
+
+# # =========================================================
+# # CREATE RUNNER DIRECTORY
+# # =========================================================
+
+# mkdir -p ${RUNNER_DIR}
+
+# cd ${RUNNER_DIR}
+
+# chown -R azureuser:azureuser ${RUNNER_DIR}
+
+# # =========================================================
+# # DOWNLOAD GITHUB RUNNER
+# # =========================================================
+
+# RUNNER_VERSION=$(curl -s \
+#   https://api.github.com/repos/actions/runner/releases/latest \
+#   | jq -r '.tag_name' \
+#   | sed 's/v//')
+
+# curl -O -L \
+#   https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+# tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+# rm -f *.tar.gz
+
+# # =========================================================
+# # INSTALL DEPENDENCIES
+# # =========================================================
+
+# ./bin/installdependencies.sh
+
+# # =========================================================
+# # CONFIGURE RUNNER
+# # =========================================================
+
+# sudo -u azureuser ./config.sh \
+#   --unattended \
+#   --url https://github.com/${GITHUB_ORG} \
+#   --token ${GITHUB_RUNNER_TOKEN} \
+#   --name ${RUNNER_NAME} \
+#   --work _work \
+#   --labels self-hosted,azure,terraform,aks,docker \
+#   --replace
+
+# # =========================================================
+# # INSTALL RUNNER SERVICE
+# # =========================================================
+# ./svc.sh install azureuser
+
+# ./svc.sh start
+
+# echo "========== VM BOOTSTRAP COMPLETE =========="

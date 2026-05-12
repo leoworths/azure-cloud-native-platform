@@ -1,7 +1,7 @@
 location = "eastus2"
 
 tags = {
-  Env        = "prod"
-  Owner      = "prod-team"
-  CostCenter = "finance"
+  Env        = "var.environment"
+  Owner      = "platform-team"
+  CostCenter = "shared"
 }

@@ -16,27 +16,6 @@ spec:
             name: appgw-gateway
             namespace: todo-app
 ---
-# Azure DNS
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: leoworths@gmail.com
-    privateKeySecretRef:
-      name: letsencrypt-prod
-    solvers:
-    - dns01:
-        azureDNS:
-          subscriptionID: "${SUBSCRIPTION_ID}"
-          resourceGroupName: "${RESOURCE_GROUP}"
-          hostedZoneName: "${DNS_ZONE_NAME}"
-          managedIdentity:
-            clientID: "${USER_ASSIGNED_CLIENT_ID}"
-          environment: AzurePublicCloud
-
 
 ---
 # Create Certificate
@@ -54,26 +33,47 @@ spec:
   dnsNames:
   - "cloudbasics.info"
 
+---
+# Azure DNS
+# apiVersion: cert-manager.io/v1
+# kind: ClusterIssuer
+# metadata:
+#   name: letsencrypt-prod
+# spec:
+#   acme:
+#     server: https://acme-v02.api.letsencrypt.org/directory
+#     email: leoworths@gmail.com
+#     privateKeySecretRef:
+#       name: letsencrypt-prod
+#     solvers:
+#     - dns01:
+#         azureDNS:
+#           subscriptionID: "${SUBSCRIPTION_ID}"
+#           resourceGroupName: "${RESOURCE_GROUP}"
+#           hostedZoneName: "${DNS_ZONE_NAME}"
+#           managedIdentity:
+#             clientID: "${USER_ASSIGNED_CLIENT_ID}"
+#           environment: AzurePublicCloud
 
 ---
 # Cloudflare DNS
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: leoworths@gmail.com
-    privateKeySecretRef:
-      name: letsencrypt-prod
-    solvers:
-    - dns01:
-        cloudflare:
-          email: "leoworths@gmail.com" # optional if using API token
-          apiTokenSecretRef:
-            name: cloudflare-api-token
-            key: api-token
----
+# apiVersion: cert-manager.io/v1
+# kind: ClusterIssuer
+# metadata:
+#   name: letsencrypt-prod
+# spec:
+#   acme:
+#     server: https://acme-v02.api.letsencrypt.org/directory
+#     email: leoworths@gmail.com
+#     privateKeySecretRef:
+#       name: letsencrypt-prod
+#     solvers:
+#     - dns01:
+#         cloudflare:
+#           email: "leoworths@gmail.com" # optional if using API token
+#           apiTokenSecretRef:
+#             name: cloudflare-api-token
+#             key: api-token
+
 
 

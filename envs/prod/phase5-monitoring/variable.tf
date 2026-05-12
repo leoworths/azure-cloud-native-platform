@@ -18,8 +18,8 @@ locals {
   name_prefix = "${var.prefix}-${var.environment}"
 
   tags = {
-    environment = var.environment
-    owner       = "platform-team"
-    costcenter  = "platform"
+    Env        = "var.environment"
+    Owner      = "platform-team"
+    CostCenter = "shared"
   }
 }

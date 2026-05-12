@@ -3,6 +3,6 @@ output "argocd_namespace" {
 }
 
 
-output "argocd_identity_client_id" {
-  value = azurerm_user_assigned_identity.argocd_identity.client_id
-}
+# output "argocd_identity_client_id" {
+#   value = azurerm_user_assigned_identity.argocd_identity.client_id
+# }

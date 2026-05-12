@@ -2,8 +2,8 @@ environment = "prod"
 location    = "eastus2"
 prefix      = "platform"
 tags = {
-  Env        = "prod"
-  Owner      = "prod-team"
-  CostCenter = "finance"
+  Env        = "var.environment"
+  Owner      = "platform-team"
+  CostCenter = "shared"
 }
 allowed_locations = ["eastus", "westeurope", "canadacentral", "eastus2"]

@@ -69,7 +69,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     network_policy    = "calico"
     load_balancer_sku = "standard"
 
-    outbound_type = var.enable_nat_gateway ? "managedNATGateway" : (
+    outbound_type = var.enable_nat_gateway ? "userAssignedNATGateway" : (
       local.is_prod && var.enable_firewall ? "userDefinedRouting" : "loadBalancer"
     )
     #outbound_type = local.is_prod && var.enable_firewall ? "userDefinedRouting" : "loadBalancer"

@@ -9,7 +9,7 @@ resource "azurerm_federated_identity_credential" "github_credential" {
   user_assigned_identity_id = azurerm_user_assigned_identity.github_identity.id
   audience            = ["api://AzureADTokenExchange"]
   issuer              = "https://token.actions.githubusercontent.com"
-  subject             = "repo:leoworths/azure-cloud-native-platform:ref:refs/heads/main"
+  subject             = "repo:leoworths/azure-cloud-native-platform.git:ref:refs/heads/main"
 }
 // Role Assignment for GitHub Actions to ACR Push
 resource "azurerm_role_assignment" "github_acr_push" {

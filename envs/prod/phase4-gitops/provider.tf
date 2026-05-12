@@ -19,15 +19,6 @@ terraform {
   }
 }
 
-# data "terraform_remote_state" "aks" {
-#   backend = "azurerm"
-#   config = {
-#     resource_group_name  = "tfstate-rg"
-#     storage_account_name = "3tierstorageacct"
-#     container_name       = "tfstate"
-#     key                  = "phase3-dev-aks-infra.tfstate"
-#   }
-# }
 
 provider "kubernetes" {
   host                   = data.terraform_remote_state.aks.outputs.kube_config_host
@@ -47,10 +38,6 @@ provider "helm" {
 
 
 
-
-# provider "azurerm" {
-#   features {}
-# }
 
 
 # provider "kubernetes" {
