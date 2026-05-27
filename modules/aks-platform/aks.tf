@@ -43,15 +43,18 @@ resource "azurerm_kubernetes_cluster" "aks" {
   dns_prefix          = "${var.prefix}-aks"
 
   # Zero Trust
-  private_cluster_enabled             = true
-  private_cluster_public_fqdn_enabled = false
+  #private_cluster_enabled             = true
+  private_cluster_enabled             = var.enable_private_aks
+  private_cluster_public_fqdn_enabled = var.enable_private_aks ? false : true
+  #private_cluster_public_fqdn_enabled = false
   local_account_disabled              = true
 
   # Identity & Security
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
   azure_policy_enabled      = true
-  private_dns_zone_id       = "System"
+  #private_dns_zone_id       = "System"
+  private_dns_zone_id = var.enable_private_aks ? "System" : null
   #private_dns_zone_id = var.enable_private_dns ? azurerm_private_dns_zone.aks_private_dns[0].id : null
 
   identity {
@@ -84,7 +87,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     max_pods                     = 50
     vnet_subnet_id               = var.aks_subnet_id
 
-    only_critical_addons_enabled = true
+    only_critical_addons_enabled = false
     os_disk_size_gb              = 30
     os_sku                       = "AzureLinux3"
     #temporary_name_for_rotation  = "systemtmp"
@@ -130,11 +133,14 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
   auto_scaling_enabled = true
   min_count            = local.user_min_nodes
   max_count            = local.user_max_nodes
+  #temporary_name_for_rotation = "usertmp"
 
   # Cost optimization
-  priority        = local.is_prod ? "Regular" : "Spot"
-  eviction_policy = local.is_prod ? null : "Deallocate"
-  spot_max_price  = local.is_prod ? null : -1
+  # priority        = local.is_prod ? "Regular" : "Spot"
+  # eviction_policy = local.is_prod ? null : "Deallocate"
+  # spot_max_price  = local.is_prod ? null : -1
+
+  priority = "Regular"
 
   vnet_subnet_id = var.aks_subnet_id
   os_disk_size_gb = 30

@@ -1,14 +1,3 @@
-resource "azurerm_monitor_action_group" "finops" {
-  name                = "${var.prefix}-alerts"
-  resource_group_name = data.terraform_remote_state.platform.outputs.platform_rg_name
-  short_name          = "alerts"
-
-  email_receiver {
-    name          = "admin"
-    email_address = var.alert_email
-  }
-}
-
 resource "azurerm_consumption_budget_resource_group" "budget" {
   name              = "${var.prefix}-budget"
   resource_group_id = data.azurerm_resource_group.platform.id

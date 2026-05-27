@@ -1,4 +1,4 @@
-// Federated Identities for Core Platform Services
+# Federated Identities for Core Platform Services
 resource "azurerm_federated_identity_credential" "workload_credential" {
   name                      = "workload-credential"
   user_assigned_identity_id = azurerm_user_assigned_identity.workload_identity.id

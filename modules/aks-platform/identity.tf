@@ -1,5 +1,4 @@
-// Identity Workload for AKS Cluster
-
+# Identity Workload for AKS Cluster
 resource "azurerm_user_assigned_identity" "workload_identity" {
   name                = "workload-identity"
   resource_group_name = var.platform_rg_name

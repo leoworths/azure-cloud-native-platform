@@ -81,14 +81,14 @@ output "workload_identity_principal_id" {
 }
 
 # --- Database ---
-output "postgres_server_name" {
-  value = azurerm_postgresql_flexible_server.postgres_server.name
-}
+# output "postgres_server_name" {
+#   value = azurerm_postgresql_flexible_server.postgres_server.name
+# }
 
-output "postgres_server_id" {
-  value = azurerm_postgresql_flexible_server.postgres_server.id
-}
+# output "postgres_server_id" {
+#   value = azurerm_postgresql_flexible_server.postgres_server.id
+# }
 
-output "postgres_server_fqdn" {
-  value = azurerm_postgresql_flexible_server.postgres_server.fqdn
-}
+# output "postgres_server_fqdn" {
+#   value = azurerm_postgresql_flexible_server.postgres_server.fqdn
+# }

@@ -85,9 +85,9 @@ output "jumpbox_private_ip" {
 output "jumpbox_id" {
   value = module.core_infra.jumpbox_id
 }
-# output "jumpbox_public_ip" {
-#   value = module.core_infra.jumpbox_public_ip
-# }
+output "jumpbox_public_ip" {
+  value = module.core_infra.jumpbox_public_ip
+}
 output "jumpbox_identity_principal_id" {
   value = module.core_infra.jumpbox_identity_principal_id
 }

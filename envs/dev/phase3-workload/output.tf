@@ -1,20 +1,20 @@
 output "kube_config_host" {
-  value = module.aks_platform.kube_config_host
+  value     = module.aks_platform.kube_config_host
   sensitive = true
 }
 
 output "kube_config_client_certificate" {
-  value = module.aks_platform.kube_config_client_certificate
+  value     = module.aks_platform.kube_config_client_certificate
   sensitive = true
 }
 
 output "kube_config_client_key" {
-  value = module.aks_platform.kube_config_client_key
+  value     = module.aks_platform.kube_config_client_key
   sensitive = true
 }
 
 output "kube_config_cluster_ca_certificate" {
-  value = module.aks_platform.kube_config_cluster_ca_certificate
+  value     = module.aks_platform.kube_config_cluster_ca_certificate
   sensitive = true
 }
 

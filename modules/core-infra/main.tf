@@ -11,7 +11,7 @@ resource "azurerm_resource_group" "spoke_rg" {
 }
 
 resource "azurerm_resource_group" "platform_rg" {
-  name     = "${var.prefix}-platform-rg"
+  name     = "platform-rg"
   location = var.location
   tags     = local.common_tags
 }

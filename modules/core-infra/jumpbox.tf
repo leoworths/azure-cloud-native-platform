@@ -4,14 +4,17 @@ resource "azurerm_user_assigned_identity" "jumpbox_identity" {
   resource_group_name = azurerm_resource_group.spoke_rg.name
 }
 
-# #Public ip creation
-# resource "azurerm_public_ip" "public_ip" {
-#   name                = "myPublicIP"
-#   location            = azurerm_resource_group.hub_rg.location
-#   resource_group_name = azurerm_resource_group.hub_rg.name
-#   allocation_method   = "Static"
-#   sku                 = "Standard"
-# }
+#Public ip creation
+resource "azurerm_public_ip" "jumpbox_pip" {
+  count               = var.enable_jumpbox_public_ip ? 1 : 0
+  name                = "jumpbox-pip"
+  location            = azurerm_resource_group.hub_rg.location
+  resource_group_name = azurerm_resource_group.hub_rg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+
+  tags = local.common_tags
+}
 
 
 # NSG for Agent Subnet
@@ -40,7 +43,8 @@ resource "azurerm_network_security_group" "jumpbox_nsg" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
-    source_address_prefix      = "VirtualNetwork" // 🔴 change this
+    #source_address_prefix      = "VirtualNetwork" // 🔴 change this
+    source_address_prefix      = var.enable_jumpbox_public_ip ? "*" : "VirtualNetwork"
     destination_address_prefix = "*"
   }
 
@@ -84,8 +88,10 @@ resource "azurerm_network_interface" "jumpbox_nic" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.jumpbox_subnet.id
     private_ip_address_allocation = "Dynamic"
-    #public_ip_address_id          = azurerm_public_ip.public_ip.id
+    #public_ip_address_id          = var.enable_jumpbox_public_ip ? azurerm_public_ip.jumpbox_pip[0].id : null
+    public_ip_address_id          = azurerm_public_ip.jumpbox_pip[0].id
   }
+  tags = local.common_tags
 }
 
 #virtual machine creation (Self Hosted Agent)
@@ -155,9 +161,9 @@ output "jumpbox_private_ip" {
 output "jumpbox_id" {
   value = azurerm_linux_virtual_machine.jumpbox.id
 }
-# output "jumpbox_public_ip" {
-#   value = azurerm_public_ip.public_ip.ip_address
-# }
+output "jumpbox_public_ip" {
+  value = var.enable_jumpbox_public_ip ? azurerm_public_ip.jumpbox_pip[0].ip_address : null
+}
 output "jumpbox_identity_principal_id" {
   value = azurerm_user_assigned_identity.jumpbox_identity.principal_id
 }

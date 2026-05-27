@@ -48,7 +48,14 @@ variable "enable_private_endpoints" {
   type        = bool
   description = "Enable Private Endpoints for resources"
 }
-
+variable "enable_jumpbox_public_ip" {
+  type        = bool
+  description = "Enable Public IP for Jumpbox"
+}
+variable "enable_bastion" {
+  type        = bool
+  description = "Enable Bastion Host"
+}
 variable "acr_sku" {
   type        = string
   description = "SKU for Azure Container Registry (e.g., Basic, Standard, Premium)"
@@ -97,4 +104,12 @@ locals {
 # }
 # variable "platform_readers_object_id" {
 #   type        = string
+# }
+
+# locals {
+#   is_prod = var.environment == "prod"
+#   enable_bastion             = local.is_prod
+#   enable_firewall            = local.is_prod
+#   enable_private_endpoints   = local.is_prod
+#   enable_jumpbox_public_ip   = !local.is_prod
 # }

@@ -1,12 +1,16 @@
 resource "azurerm_public_ip" "bastion_pip" {
+  count               = var.enable_bastion ? 1 : 0
   name                = "bastion-pip"
   location            = azurerm_resource_group.hub_rg.location
   resource_group_name = azurerm_resource_group.hub_rg.name
   allocation_method   = "Static"
   sku                 = "Standard"
+
+  tags = local.common_tags
 }
 
 resource "azurerm_bastion_host" "bastion" {
+  count               = var.enable_bastion ? 1 : 0
   name                = "bastion"
   location            = azurerm_resource_group.hub_rg.location
   resource_group_name = azurerm_resource_group.hub_rg.name
@@ -21,7 +25,7 @@ resource "azurerm_bastion_host" "bastion" {
   ip_configuration {
     name                 = "bastion-config"
     subnet_id            = azurerm_subnet.bastion_subnet.id
-    public_ip_address_id = azurerm_public_ip.bastion_pip.id
+    public_ip_address_id = azurerm_public_ip.bastion_pip[0].id
   }
   tags = local.common_tags
 }
@@ -31,11 +35,17 @@ resource "azurerm_bastion_host" "bastion" {
 # ==============================
 # Outputs
 # ==============================
+# output "bastion_host_id" {
+#   value = azurerm_bastion_host.bastion.id
+# }
+
+# output "bastion_public_ip" {
+#   value = azurerm_public_ip.bastion_pip.ip_address
+# }
+
 output "bastion_host_id" {
-  value = azurerm_bastion_host.bastion.id
+  value = var.enable_bastion ? azurerm_bastion_host.bastion[0].id : null
 }
-
 output "bastion_public_ip" {
-  value = azurerm_public_ip.bastion_pip.ip_address
+  value = var.enable_bastion ? azurerm_public_ip.bastion_pip[0].ip_address : null
 }
-

@@ -22,6 +22,9 @@ variable "enable_postgres" {
 variable "enable_private_dns" { 
   type = bool 
   }
+variable "enable_private_aks" { 
+  type = bool 
+  }
 
 # FROM REMOTE STATE (NOW PASSED IN)
 variable "platform_rg_name" {}

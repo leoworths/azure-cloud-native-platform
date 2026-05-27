@@ -7,8 +7,6 @@ echo "========== STARTING VM BOOTSTRAP =========="
 
 # System Update
 apt-get update -y
-apt-get upgrade -y
-
 # Base Packages
 apt-get install -y \
   curl wget git unzip jq \
@@ -25,34 +23,34 @@ rm kubectl
 # Helm
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-# Docker
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" \
-  > /etc/apt/sources.list.d/docker.list
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# # Docker
+# install -m 0755 -d /etc/apt/keyrings
+# curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# chmod a+r /etc/apt/keyrings/docker.gpg
+# echo \
+#   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+#   https://download.docker.com/linux/ubuntu \
+#   $(lsb_release -cs) stable" \
+#   > /etc/apt/sources.list.d/docker.list
+# apt-get update -y
+# apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-systemctl enable docker
-systemctl start docker
-usermod -aG docker azureuser
-# newgrp docker 
+# systemctl enable docker
+# systemctl start docker
+# usermod -aG docker azureuser
+# # newgrp docker 
 
 # Terraform
-wget -O- https://apt.releases.hashicorp.com/gpg \
-  | gpg --dearmor \
-  | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
-echo \
-  "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-  https://apt.releases.hashicorp.com \
-  $(lsb_release -cs) main" \
-  > /etc/apt/sources.list.d/hashicorp.list
-apt-get update -y
-apt-get install -y terraform
+# wget -O- https://apt.releases.hashicorp.com/gpg \
+#   | gpg --dearmor \
+#   | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+# echo \
+#   "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+#   https://apt.releases.hashicorp.com \
+#   $(lsb_release -cs) main" \
+#   > /etc/apt/sources.list.d/hashicorp.list
+# apt-get update -y
+# apt-get install -y terraform
 
 
 # kubelogin
@@ -63,6 +61,15 @@ install -o root -g root -m 0755 \
   kubelogin/bin/linux_amd64/kubelogin \
   /usr/local/bin/kubelogin
 rm -rf kubelogin kubelogin-linux-amd64.zip
+
+
+
+
+
+
+
+
+
 
 
 # # Security Tools

@@ -1,49 +1,452 @@
-name: CD - GitOps Deployment 
-
+name: CD - GitOps Deployment
 on:
-    workflow_run:
-        workflows: ["CI - Build and Security Scan"]
-        types:
-            - completed
+  workflow_run:
+    workflows:
+      - "CI - Build and Security Scan"
+    types:
+      - completed
+permissions:
+  contents: write
+env:
+  IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
 
-env: 
   ACR_LOGIN_SERVER: 3tieracr.azurecr.io
-  FRONTEND_IMAGE: 3tier-azure/frontend
+
   BACKEND_IMAGE: 3tier-azure/backend
-  IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+  FRONTEND_IMAGE: 3tier-azure/frontend
 
 jobs:
+
   deploy:
+
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    permissions:
-      id-token: write
-      contents: write   # Needed for GitOps push
+
+    if: github.event.workflow_run.conclusion == 'success'
+
+    strategy:
+      matrix:
+        environment:
+          - dev
+          - prod
+
+    environment:
+      name: ${{ matrix.environment }}
 
     steps:
-      - name: Checkout code
+
+      # =====================================================
+      # CHECKOUT
+      # =====================================================
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-            repository: leoworths/platform-gitops
-            token: ${{ secrets.GH_PAT }}
-            fetch-depth: 0
-      
-      # =========================
-      # GITOPS UPDATE FOR ARGO CD
-      # =========================
-      - name: Update Argo CD Application YAML with new image tag
+          fetch-depth: 0
+
+      - name: Set Image Tag
         run: |
-          sed -i "s|image: .*backend.*|image: $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG|g" k8s/backend.yaml
-          sed -i "s|image: .*frontend.*|image: $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG|g" k8s/frontend.yaml
-      - name: Commit and Push changes to GitOps repo
+          echo "IMAGE_TAG=sha-$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_ENV
+
+
+      # =====================================================
+      # ONLY DEPLOY PROD FROM MAIN
+      # =====================================================
+
+      - name: Skip Prod if Not Main
+        if: |
+          matrix.environment == 'prod' &&
+          github.event.workflow_run.head_branch != 'main'
         run: |
+          echo "Skipping PROD deployment"
+          exit 0
+
+      # =====================================================
+      # INSTALL KUSTOMIZE
+      # =====================================================
+
+      - name: Install Kustomize
+        run: |
+          curl -s \
+          https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh \
+          | bash
+
+          sudo mv kustomize /usr/local/bin/
+
+      # =====================================================
+      # UPDATE BACKEND IMAGE
+      # =====================================================
+
+      - name: Update Backend Image
+        run: |
+          cd gitops/overlays/${{ matrix.environment }}
+
+          kustomize edit set image \
+          backend=${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
+
+      # =====================================================
+      # UPDATE FRONTEND IMAGE
+      # =====================================================
+
+      - name: Update Frontend Image
+        run: |
+          cd gitops/overlays/${{ matrix.environment }}
+
+          kustomize edit set image \
+          frontend=${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+      # =====================================================
+      # COMMIT CHANGES
+      # =====================================================
+
+      - name: Commit Changes
+        run: |
+
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/backend.yaml k8s/frontend.yaml
-          git commit -m "Update image tags to $IMAGE_TAG [skip ci]" || echo "No changes to commit"
-          git push 
+
+          git config --global user.email \
+          "github-actions[bot]@users.noreply.github.com"
+
+          git add \
+          gitops/overlays/${{ matrix.environment }}/kustomization.yaml
+
+          git commit -m \
+          "Deploy ${{ matrix.environment }} image ${IMAGE_TAG} [skip ci]" \
+          || echo "No changes"
+
+          git push origin main
 
 
 
 
 
+
+
+
+
+
+
+# name: CD - GitOps Deployment
+
+# on:
+#   workflow_run:
+#     workflows:
+#       - CI - Build and Security Scan
+#     types:
+#       - completed
+
+# permissions:
+#   contents: write
+#   id-token: write
+
+# env:
+#   ACR_NAME: 3tieracr
+#   ACR_LOGIN_SERVER: 3tieracr.azurecr.io
+#   FRONTEND_IMAGE: 3tier-azure/frontend
+#   BACKEND_IMAGE: 3tier-azure/backend
+
+# jobs:
+
+#   update-manifests:
+#     runs-on: ubuntu-latest
+
+#     if: >
+#       github.event.workflow_run.conclusion == 'success' &&
+#       github.event.workflow_run.head_branch == 'main'
+
+#     steps:
+
+#       # =========================
+#       # CHECKOUT
+#       # =========================
+#       - name: Checkout Repository
+#         uses: actions/checkout@v4
+#         with:
+#           token: ${{ secrets.GITHUB_TOKEN }}
+
+#       # =========================
+#       # AZURE LOGIN
+#       # =========================
+#       - name: Azure Login
+#         uses: azure/login@v3
+#         with:
+#           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+#       # =========================
+#       # GET FRONTEND DIGEST
+#       # =========================
+#       - name: Get Frontend Digest
+#         id: frontend_digest
+#         run: |
+#           DIGEST=$(az acr repository show-manifests \
+#             --name $ACR_NAME \
+#             --repository $FRONTEND_IMAGE \
+#             --query "[0].digest" \
+#             -o tsv)
+
+#           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+#       # =========================
+#       # GET BACKEND DIGEST
+#       # =========================
+#       - name: Get Backend Digest
+#         id: backend_digest
+#         run: |
+#           DIGEST=$(az acr repository show-manifests \
+#             --name $ACR_NAME \
+#             --repository $BACKEND_IMAGE \
+#             --query "[0].digest" \
+#             -o tsv)
+
+#           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+#       # =========================
+#       # UPDATE FRONTEND MANIFEST
+#       # =========================
+#       - name: Update Frontend Deployment
+#         run: |
+#           sed -i \
+#           "s|image: .*|image: $ACR_LOGIN_SERVER/$FRONTEND_IMAGE@${{ steps.frontend_digest.outputs.digest }}|g" \
+#           k8s/frontend.yaml
+
+#       # =========================
+#       # UPDATE BACKEND MANIFEST
+#       # =========================
+#       - name: Update Backend Deployment
+#         run: |
+#           sed -i \
+#           "s|image: .*|image: $ACR_LOGIN_SERVER/$BACKEND_IMAGE@${{ steps.backend_digest.outputs.digest }}|g" \
+#           k8s/backend.yaml
+
+#       # =========================
+#       # VERIFY
+#       # =========================
+#       - name: Verify Changes
+#         run: |
+#           echo "Frontend Image:"
+#           grep "image:" k8s/frontend.yaml
+
+#           echo "Backend Image:"
+#           grep "image:" k8s/backend.yaml
+
+#       # =========================
+#       # GIT CONFIG
+#       # =========================
+#       - name: Configure Git
+#         run: |
+#           git config user.name "github-actions"
+#           git config user.email "actions@github.com"
+
+#       # =========================
+#       # COMMIT + PUSH
+#       # =========================
+#       - name: Commit and Push Changes
+#         run: |
+#           git add k8s/frontend.yaml k8s/backend.yaml
+#           git commit -m "ci: update image digests [skip ci]" || echo "No changes to commit"
+#           git push origin main
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# name: CD - GitOps Deployment 
+
+# on:
+#     workflow_run:
+#         workflows: ["CI - Build and Security Scan"]
+#         types:
+#             - completed
+
+# env: 
+#   ACR_LOGIN_SERVER: 3tieracr.azurecr.io
+#   FRONTEND_IMAGE: 3tier-azure/frontend
+#   BACKEND_IMAGE: 3tier-azure/backend
+#   IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+#     permissions:
+#       id-token: write
+#       contents: write   # Needed for GitOps push
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+      
+#       # =========================
+#       # GITOPS UPDATE FOR ARGO CD
+#       # =========================
+#       - name: Update Backend Image Tag in Gitops repo
+#         run: |
+#           sed -i "s|image: .*|image: $ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG|g" k8s/backend.yaml
+
+#       - name: Update Frontend Image Tag in Gitops repo
+#         run: |
+#           sed -i "s|image: .*|image: $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG|g" k8s/frontend.yaml
+#       - name: Commit and Push changes to GitOps repo
+#         run: |
+#           git config --global user.name "github-actions[bot]"
+#           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+#           git add k8s/backend.yaml k8s/frontend.yaml
+#           git commit -m "Update image tags to $IMAGE_TAG [skip ci]" || echo "No changes to commit"
+#           git push 
+     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# name: CD - GitOps Deployment
+
+# on:
+#   workflow_run:
+#     workflows:
+#       - "CI - Build and Security Scan"
+#     types:
+#       - completed
+
+# permissions:
+#   contents: write
+
+# env:
+#   IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
+#   ACR_LOGIN_SERVER: 3tieracr.azurecr.io
+#   BACKEND_IMAGE: 3tier-azure/backend
+#   FRONTEND_IMAGE: 3tier-azure/frontend
+
+# jobs:
+
+#   deploy:
+#     runs-on: ubuntu-latest
+
+#     if: >
+#       github.event.workflow_run.conclusion == 'success'
+
+#     strategy:
+#       matrix:
+#         environment:
+#           - dev
+#           - prod
+
+#     environment:
+#       name: ${{ matrix.environment }}
+
+#     steps:
+
+#       # =====================================================
+#       # CHECKOUT
+#       # =====================================================
+
+#       - name: Checkout Repository
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+
+#       # =====================================================
+#       # ONLY DEPLOY PROD FROM MAIN
+#       # =====================================================
+
+#       - name: Skip Prod if Not Main
+#         if: >
+#           matrix.environment == 'prod' &&
+#           github.event.workflow_run.head_branch != 'main'
+#         run: |
+#           echo "Skipping PROD deployment"
+#           exit 0
+
+#       # =====================================================
+#       # INSTALL KUSTOMIZE
+#       # =====================================================
+
+#       - name: Install Kustomize
+#         run: |
+#           curl -s \
+#           https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh \
+#           | bash
+
+#           sudo mv kustomize /usr/local/bin/
+
+#       # =====================================================
+#       # UPDATE BACKEND IMAGE
+#       # =====================================================
+
+#       - name: Update Backend Image
+#         working-directory: gitops/overlays/${{ matrix.environment }}
+#         run: |
+#           kustomize edit set image \
+#           backend=${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
+
+#       # =====================================================
+#       # UPDATE FRONTEND IMAGE
+#       # =====================================================
+
+#       - name: Update Frontend Image
+#         working-directory: gitops/overlays/${{ matrix.environment }}
+#         run: |
+#           kustomize edit set image \
+#           frontend=${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+#       # =====================================================
+#       # VERIFY
+#       # =====================================================
+
+#       - name: Verify Kustomization
+#         run: |
+#           cat gitops/overlays/${{ matrix.environment }}/kustomization.yaml
+
+#       # =====================================================
+#       # COMMIT CHANGES
+#       # =====================================================
+
+#       - name: Commit Changes
+#         run: |
+
+#           git config --global user.name "github-actions[bot]"
+
+#           git config --global user.email \
+#           "github-actions[bot]@users.noreply.github.com"
+
+#           git add \
+#           gitops/overlays/${{ matrix.environment }}/kustomization.yaml
+
+#           git commit -m \
+#           "Deploy ${{ matrix.environment }} image ${IMAGE_TAG} [skip ci]" \
+#           || echo "No changes"
+
+#           git push origin main

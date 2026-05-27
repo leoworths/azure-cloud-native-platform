@@ -311,32 +311,82 @@ resource "azurerm_policy_definition" "enforce_https" {
 # DENY NIC PUBLIC IP
 ########################################
 
+# resource "azurerm_policy_definition" "deny_nic_public_ip" {
+#   name                = "deny-nic-public-ip"
+#   display_name        = "Deny Public IP on NICs"
+#   policy_type         = "Custom"
+#   mode                = "All"
+#   management_group_id = azurerm_management_group.platform.id
+
+#   policy_rule = jsonencode({
+#     if = {
+#       allOf = [
+#         {
+#           field  = "type"
+#           equals = "Microsoft.Network/networkInterfaces"
+#         },
+#         {
+#           field  = "Microsoft.Network/networkInterfaces/ipconfigurations[*].publicIPAddress.id"
+#           exists = true
+#         }
+#       ]
+#     }
+#     then = {
+#       effect = "Deny"
+#     }
+#   })
+
+#   metadata = jsonencode({ category = "Network" })
+# }
+
 resource "azurerm_policy_definition" "deny_nic_public_ip" {
+
   name                = "deny-nic-public-ip"
   display_name        = "Deny Public IP on NICs"
   policy_type         = "Custom"
   mode                = "All"
   management_group_id = azurerm_management_group.platform.id
 
+  parameters = jsonencode({
+
+    effect = {
+      type = "String"
+
+      allowedValues = [
+        "Audit",
+        "Deny",
+        "Disabled"
+      ]
+
+      defaultValue = "Deny"
+    }
+  })
+
   policy_rule = jsonencode({
+
     if = {
       allOf = [
+
         {
           field  = "type"
           equals = "Microsoft.Network/networkInterfaces"
         },
+
         {
           field  = "Microsoft.Network/networkInterfaces/ipconfigurations[*].publicIPAddress.id"
           exists = true
         }
       ]
     }
+
     then = {
-      effect = "Deny"
+      effect = "[parameters('effect')]"
     }
   })
 
-  metadata = jsonencode({ category = "Network" })
+  metadata = jsonencode({
+    category = "Network"
+  })
 }
 
 ########################################
@@ -422,11 +472,23 @@ resource "azurerm_management_group_policy_set_definition" "platform_governance" 
     reference_id         = "enforceHttps"
   }
 
+#   policy_definition_reference {
+#     policy_definition_id = azurerm_policy_definition.deny_nic_public_ip.id
+#     reference_id         = "denyNicPublicIp"
+#   }
+
+#   metadata = jsonencode({ category = "Governance" })
+# }
+
   policy_definition_reference {
     policy_definition_id = azurerm_policy_definition.deny_nic_public_ip.id
-    reference_id         = "denyNicPublicIp"
+    reference_id = "denyNicPublicIp"
+    parameter_values = jsonencode({
+      effect = {
+        value = var.environment == "prod"? "Deny" : "Audit"
+      }
+    })
   }
-
   metadata = jsonencode({ category = "Governance" })
 }
 

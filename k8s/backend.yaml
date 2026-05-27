@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: backend
+        azure.workload.identity/use: "true"
     spec:
       serviceAccountName: todo-sa
       containers:
@@ -24,9 +25,28 @@ spec:
           args:
             - |
               echo "Waiting for secrets..."
-              while [ ! -f /mnt/secrets/DB_USER ] || [ ! -f /mnt/secrets/DB_PASSWORD ] || [ ! -f /mnt/secrets/SECRET_KEY ]; do sleep 1; done
+
+              while [ ! -f /mnt/secrets/db-user ] || \
+                    [ ! -f /mnt/secrets/db-password ] || \
+                    [ ! -f /mnt/secrets/db-host ] || \
+                    [ ! -f /mnt/secrets/db-name ] || \
+                    [ ! -f /mnt/secrets/secret-key ]; do
+                sleep 2
+              done
+
               echo "Secrets ready!"
-              exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+
+              export DB_USER=$(cat /mnt/secrets/db-user)
+              export DB_PASSWORD=$(cat /mnt/secrets/db-password)
+              export DB_HOST=$(cat /mnt/secrets/db-host)
+              export DB_NAME=$(cat /mnt/secrets/db-name)
+              export SECRET_KEY=$(cat /mnt/secrets/secret-key)
+
+              echo "Starting Django backend..."
+
+              exec gunicorn config.wsgi:application \
+                --bind 0.0.0.0:8000 \
+                --workers 3
           env: 
             - name: DB_NAME
               valueFrom:
@@ -37,6 +57,12 @@ spec:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets"
               readOnly: true
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthz

@@ -2,7 +2,7 @@ environment = "prod"
 location    = "eastus2"
 prefix      = "platform"
 tags = {
-  Env        = "var.environment"
+  Env        = "prod"
   Owner      = "platform-team"
   CostCenter = "shared"
 }

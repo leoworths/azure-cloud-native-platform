@@ -1,7 +1,9 @@
 location = "eastus2"
+environment = "prod"
+prefix      = "3tier"
 
 tags = {
-    Env        = "var.environment"
+    Env        = "dev"
     Owner      = "platform-team"
     CostCenter = "shared"
 }
