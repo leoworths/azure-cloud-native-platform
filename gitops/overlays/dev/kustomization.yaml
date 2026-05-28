@@ -4,64 +4,34 @@ kind: Kustomization
 namespace: todo-app
 
 resources:
-  - ../../base
+- ../../base
 
 labels:
-  - pairs:
-      environment: dev
+- pairs:
+    environment: dev
+
 
 replicas:
-  - name: backend
-    count: 1
+- count: 1
+  name: backend
+- count: 1
+  name: frontend
 
-  - name: frontend
-    count: 1
 
 images:
-  - name: backend
-    newName: 3tieracr.azurecr.io/3tier-azure/backend
-    newTag: initial
-
-  - name: frontend
-    newName: 3tieracr.azurecr.io/3tier-azure/frontend
-    newTag: initial
+- name: backend
+  newName: 3tieracr.azurecr.io/3tier-azure/backend
+  newTag: sha-b4aee5a
+- name: frontend
+  newName: 3tieracr.azurecr.io/3tier-azure/frontend
+  newTag: sha-b4aee5a
 
 
 patches:
-  - target:
-      kind: HorizontalPodAutoscaler
-      name: backend-hpa
-    patch: |-
-      - op: replace
-        path: /spec/minReplicas
-        value: 1
-
-
-
-
-# apiVersion: kustomize.config.k8s.io/v1beta1
-# kind: Kustomization
-
-# namespace: todo-app
-
-# resources:
-#   - ../../base
-
-
-# labels:
-#   - pairs:
-#       environment: dev
-
-# patches:
-#   - path: replicas.yaml
-
-# images:
-#   - name: backend
-#     newName: 3tieracr.azurecr.io/3tier-azure/backend
-#     newTag: initial
-
-#   - name: frontend
-#     newName: 3tieracr.azurecr.io/3tier-azure/frontend
-#     newTag: initial
-
-
+- patch: |-
+    - op: replace
+      path: /spec/minReplicas
+      value: 1
+  target:
+    kind: HorizontalPodAutoscaler
+    name: backend-hpa
