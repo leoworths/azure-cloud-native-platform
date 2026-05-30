@@ -21,10 +21,10 @@ replicas:
 images:
 - name: backend
   newName: 3tieracr.azurecr.io/3tier-azure/backend
-  newTag: sha-ab875a7
+  newTag: sha-49f2c9d
 - name: frontend
   newName: 3tieracr.azurecr.io/3tier-azure/frontend
-  newTag: sha-ab875a7
+  newTag: sha-49f2c9d
 
 
 patches:
