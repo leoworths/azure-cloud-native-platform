@@ -17,20 +17,20 @@ spec:
             namespace: todo-app
 
 ---
-# Create Certificate
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: tls-cert
-  namespace: todo-app
-spec:
-  secretName: tls-secret
-  issuerRef:
-    name: letsencrypt-prod
-    kind: ClusterIssuer
-  commonName: "cloudbasics.info"
-  dnsNames:
-  - "cloudbasics.info"
+# # Create Certificate
+# apiVersion: cert-manager.io/v1
+# kind: Certificate
+# metadata:
+#   name: tls-cert
+#   namespace: todo-app
+# spec:
+#   secretName: tls-secret
+#   issuerRef:
+#     name: letsencrypt-prod
+#     kind: ClusterIssuer
+#   commonName: "cloudbasics.info"
+#   dnsNames:
+#   - "cloudbasics.info"
 
 #---
 # Azure DNS
