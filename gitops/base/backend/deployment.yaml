@@ -53,19 +53,19 @@ spec:
               readOnly: true
           startupProbe:
             httpGet:
-              path: /tasks/
+              path: /healthz/
               port: 8000
             failureThreshold: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /tasks/
+              path: /healthz/
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 20
           readinessProbe:
             httpGet:
-              path: /tasks/
+              path: /readiness/
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 15
