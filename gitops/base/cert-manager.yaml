@@ -16,9 +16,24 @@ spec:
             name: appgw-gateway
             namespace: todo-app
 
----
-# Create Certificate
-apiVersion: cert-manager.io/v1
+# ---
+# # Create Certificate
+# apiVersion: cert-manager.io/v1
+# kind: Certificate
+# metadata:
+#   name: tls-cert
+#   namespace: todo-app
+# spec:
+#   secretName: tls-secret
+#   issuerRef:
+#     name: letsencrypt-prod
+#     kind: ClusterIssuer
+#   commonName: "cloudbasics.info"
+#   dnsNames:
+#   - "cloudbasics.info"
+
+
+  apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: tls-cert
@@ -28,9 +43,8 @@ spec:
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
-  commonName: "cloudbasics.info"
   dnsNames:
-  - "cloudbasics.info"
+    - cloudbasics.info
 
 #---
 # Azure DNS
