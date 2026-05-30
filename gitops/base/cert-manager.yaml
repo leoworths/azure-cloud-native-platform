@@ -12,9 +12,9 @@ spec:
     - http01:
         gatewayHTTPRoute:
           parentRefs:
-          - kind: Gateway
-            name: appgw-gateway
+          - name: appgw-gateway
             namespace: todo-app
+            kind: Gateway
 
 ---
 # Create Certificate
