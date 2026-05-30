@@ -18,12 +18,19 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 
-def health(request):
+def healthz(request):
     return JsonResponse({"status": "ok"})
+
+def readiness(request):
+    return JsonResponse({"status": "ready"})
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # API routes
     path("api/", include("todo.urls")),
-    path("healthz/", health),
-    path("readiness/", health),
+
+    # Kubernetes probes (CRITICAL)
+    path("healthz/", healthz),
+    path("readiness/", readiness),
 ]
