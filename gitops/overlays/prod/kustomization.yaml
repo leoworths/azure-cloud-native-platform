@@ -27,7 +27,7 @@ patches:
 images:
 - name: backend
   newName: 3tieracr.azurecr.io/3tier-azure/backend
-  newTag: sha-e7765eb
+  newTag: sha-a4a401b
 - name: frontend
   newName: 3tieracr.azurecr.io/3tier-azure/frontend
-  newTag: sha-e7765eb
+  newTag: sha-a4a401b
